@@ -107,6 +107,7 @@ def create_app(args):
         "openai",
         "azure_openai",
         "aws_bedrock",
+        "google",
     ]:
         raise Exception("llm binding not supported")
 
@@ -117,6 +118,7 @@ def create_app(args):
         "azure_openai",
         "aws_bedrock",
         "jina",
+        "google",
     ]:
         raise Exception("embedding binding not supported")
 
@@ -255,6 +257,8 @@ def create_app(args):
         from lightrag.llm.binding_options import OllamaEmbeddingOptions
     if args.embedding_binding == "jina":
         from lightrag.llm.jina import jina_embed
+    if args.embedding_binding == "google" or args.llm_binding == "google":
+        from lightrag.llm.google import google_embed, google_complete_async
 
     llm_timeout = get_env_value("LLM_TIMEOUT", args.timeout, int)
 
@@ -338,52 +342,87 @@ def create_app(args):
             history_messages=history_messages,
             **kwargs,
         )
+    
+    async def google_model_complete(
+        prompt,
+        system_prompt=None,
+        history_messages=None,
+        **kwargs,
+    ) -> str:
+        if history_messages is None:
+            history_messages = []
+
+        kwargs["temperature"] = get_env_value("GOOGLE_LLM_TEMPERATURE", None, float)
+        kwargs["top_p"] = get_env_value("GOOGLE_LLM_TOP_P", None, float)
+        kwargs["top_k"] = get_env_value("GOOGLE_LLM_TOP_K", None, int)
+        kwargs["max_output_tokens"] = get_env_value("GOOGLE_LLM_MAX_OUTPUT_TOKENS", None, int)
+        kwargs["safety_settings"] = os.getenv("GOOGLE_LLM_SAFETY_SETTINGS", None)
+        
+        kwargs["timeout"] = llm_timeout
+
+        return await google_complete_async(
+            prompt=prompt,
+            model=args.llm_model,
+            system_prompt=system_prompt,
+            history_messages=history_messages,
+            api_key=args.llm_binding_api_key,
+            **kwargs,
+        )
 
     embedding_func = EmbeddingFunc(
         embedding_dim=args.embedding_dim,
         func=lambda texts: (
-            lollms_embed(
+            google_embed(
                 texts,
-                embed_model=args.embedding_model,
-                host=args.embedding_binding_host,
+                model=args.embedding_model,
                 api_key=args.embedding_binding_api_key,
             )
-            if args.embedding_binding == "lollms"
-            else (
-                ollama_embed(
+            if args.embedding_binding == "google"
+            else
+            (
+                lollms_embed(
                     texts,
                     embed_model=args.embedding_model,
                     host=args.embedding_binding_host,
                     api_key=args.embedding_binding_api_key,
-                    options=OllamaEmbeddingOptions.options_dict(args),
                 )
-                if args.embedding_binding == "ollama"
+                if args.embedding_binding == "lollms"
                 else (
-                    azure_openai_embed(
+                    ollama_embed(
                         texts,
-                        model=args.embedding_model,  # no host is used for openai,
+                        embed_model=args.embedding_model,
+                        host=args.embedding_binding_host,
                         api_key=args.embedding_binding_api_key,
+                        options=OllamaEmbeddingOptions.options_dict(args),
                     )
-                    if args.embedding_binding == "azure_openai"
+                    if args.embedding_binding == "ollama"
                     else (
-                        bedrock_embed(
+                        azure_openai_embed(
                             texts,
-                            model=args.embedding_model,
+                            model=args.embedding_model,  # no host is used for openai,
+                            api_key=args.embedding_binding_api_key,
                         )
-                        if args.embedding_binding == "aws_bedrock"
+                        if args.embedding_binding == "azure_openai"
                         else (
-                            jina_embed(
-                                texts,
-                                dimensions=args.embedding_dim,
-                                base_url=args.embedding_binding_host,
-                                api_key=args.embedding_binding_api_key,
-                            )
-                            if args.embedding_binding == "jina"
-                            else openai_embed(
+                            bedrock_embed(
                                 texts,
                                 model=args.embedding_model,
-                                base_url=args.embedding_binding_host,
-                                api_key=args.embedding_binding_api_key,
+                            )
+                            if args.embedding_binding == "aws_bedrock"
+                            else (
+                                jina_embed(
+                                    texts,
+                                    dimensions=args.embedding_dim,
+                                    base_url=args.embedding_binding_host,
+                                    api_key=args.embedding_binding_api_key,
+                                )
+                                if args.embedding_binding == "jina"
+                                else openai_embed(
+                                    texts,
+                                    model=args.embedding_model,
+                                    base_url=args.embedding_binding_host,
+                                    api_key=args.embedding_binding_api_key,
+                                )
                             )
                         )
                     )
@@ -455,12 +494,14 @@ def create_app(args):
     )
 
     # Initialize RAG
-    if args.llm_binding in ["lollms", "ollama", "openai", "aws_bedrock"]:
+    if args.llm_binding in ["lollms", "ollama", "openai", "aws_bedrock", "google"]:
         rag = LightRAG(
             working_dir=args.working_dir,
             workspace=args.workspace,
             llm_model_func=(
-                lollms_model_complete
+                google_model_complete
+                if args.llm_binding == "google"
+                else lollms_model_complete
                 if args.llm_binding == "lollms"
                 else (
                     ollama_model_complete
@@ -817,6 +858,7 @@ def check_and_install_dependencies():
         "uvicorn",
         "tiktoken",
         "fastapi",
+        "json_repair",
         # Add other required packages here
     ]
 

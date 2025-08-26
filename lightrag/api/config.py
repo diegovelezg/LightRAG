@@ -232,6 +232,7 @@ def parse_args() -> argparse.Namespace:
             "openai-ollama",
             "azure_openai",
             "aws_bedrock",
+            "google",
         ],
         help="LLM binding type (default: from env or ollama)",
     )
@@ -239,7 +240,7 @@ def parse_args() -> argparse.Namespace:
         "--embedding-binding",
         type=str,
         default=get_env_value("EMBEDDING_BINDING", "ollama"),
-        choices=["lollms", "ollama", "openai", "azure_openai", "aws_bedrock", "jina"],
+        choices=["lollms", "ollama", "openai", "azure_openai", "aws_bedrock", "jina", "google"],
         help="Embedding binding type (default: from env or ollama)",
     )
     parser.add_argument(

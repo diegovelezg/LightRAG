@@ -50,6 +50,7 @@ api = [
     "networkx",
     "numpy",
     "openai",
+    "google-generativeai",
     "pandas>=2.0.0",
     "pipmaster",
     "pydantic",
